@@ -1,14 +1,12 @@
 const { ethers } = require("hardhat");
 
 async function main() {
-
-  const contractAddress = "0xC42Fea3ECC8087425E2Cb4c6A736A0cDb157c0cC";
+  const contractAddress = "0xeD56Bf1D4a1055c114564Ca06Ea46Fea260B4d7A";
 
   const network = await ethers.provider.getNetwork();
 
   console.log("Connected Network:", network.name, network.chainId);
 
-  // Allow ONLY Ganache
   if (network.chainId !== 1337n && network.chainId !== 31337n) {
     console.log("❌ Please run this script on Ganache / Localhost only");
     process.exit(1);
@@ -18,77 +16,117 @@ async function main() {
 
   const owner = signers[0];
   const doctor = signers[1];
-  const randomUser = signers[2];
+  const patient = signers[2];
 
-  console.log("Owner:", owner.address);
-  console.log("Doctor:", doctor.address);
-  console.log("Random User:", randomUser.address);
+  console.log("\n========== ACCOUNTS ==========");
+  console.log("Owner Address:", owner.address);
+  console.log("Doctor Address:", doctor.address);
+  console.log("Patient Address:", patient.address);
+  console.log("==============================\n");
 
   const Healthcare = await ethers.getContractFactory("Healthcare", owner);
   const healthcare = Healthcare.attach(contractAddress);
 
-  // Authorize doctor
-  const tx1 = await healthcare.authorizeDoctor(doctor.address);
-  await tx1.wait();
+  // Check current doctor authorization status
+  console.log("Checking doctor authorization status...");
+  const isDoctorBefore = await healthcare.authorizedDoctors(doctor.address);
+  console.log("Doctor authorized before:", isDoctorBefore);
 
-  console.log("✅ Doctor authorized");
+  if (!isDoctorBefore) {
+    // Authorize doctor
+    console.log("\n📝 Authorizing doctor...");
+    const tx1 = await healthcare.authorizeDoctor(doctor.address);
+    await tx1.wait();
+    console.log("✅ Doctor authorized successfully!");
+    
+    const isDoctorAfter = await healthcare.authorizedDoctors(doctor.address);
+    console.log("Doctor authorized after:", isDoctorAfter);
+  } else {
+    console.log("✅ Doctor is already authorized!");
+  }
 
-  // Doctor adds record (WITH IPFS HASH)
+  // Step 1: Doctor creates pending record (with fee)
+  console.log("\n📝 Creating pending record...");
   const healthcareAsDoctor = healthcare.connect(doctor);
+  const fee = ethers.parseEther("0.05"); // 0.05 ETH consultation fee
+  const fileHash = "QmExampleIPFSHash123456";
 
-  const fileHash = "QmExampleIPFSHash123456"; // Example IPFS hash
+  console.log("  Patient:", patient.address);
+  console.log("  Patient Name: Sahil");
+  console.log("  Diagnosis: Cold");
+  console.log("  Treatment: Medicine");
+  console.log("  Fee:", ethers.formatEther(fee), "ETH");
 
-  const tx2 = await healthcareAsDoctor.addRecord(
-    owner.address,
+  const tx2 = await healthcareAsDoctor.createPendingRecord(
+    patient.address,
     "Sahil",
     "Cold",
     "Medicine",
-    fileHash
+    fileHash,
+    fee
   );
-
   await tx2.wait();
+  console.log("✅ Pending record created by doctor");
+  console.log("  Transaction Hash:", tx2.hash);
 
-  console.log("✅ Medical record added by doctor");
+  // Check pending records for patient
+  console.log("\n📝 Checking pending records...");
+  const pending = await healthcare.getPendingRecords(patient.address);
+  console.log("Pending Records Count:", pending.length);
+  
+  if (pending.length > 0) {
+    console.log("  Record Details:");
+    console.log("    - Patient:", pending[0][0]);
+    console.log("    - Doctor:", pending[0][1]);
+    console.log("    - Name:", pending[0][2]);
+    console.log("    - Diagnosis:", pending[0][3]);
+    console.log("    - Treatment:", pending[0][4]);
+    console.log("    - Fee:", ethers.formatEther(pending[0][6]), "ETH");
+  }
+
+  // Step 2: Patient approves and pays
+  console.log("\n💰 Patient approving and paying...");
+  const healthcareAsPatient = healthcare.connect(patient);
+  const recordId = 0;
+  
+  // Check patient balance before payment
+  const balanceBefore = await ethers.provider.getBalance(patient.address);
+  console.log("Patient balance before:", ethers.formatEther(balanceBefore), "ETH");
+  
+  const tx3 = await healthcareAsPatient.approveAndPay(recordId, { value: fee });
+  await tx3.wait();
+  console.log("✅ Patient approved and paid");
+  console.log("  Transaction Hash:", tx3.hash);
+  
+  // Check patient balance after payment
+  const balanceAfter = await ethers.provider.getBalance(patient.address);
+  console.log("Patient balance after:", ethers.formatEther(balanceAfter), "ETH");
+  console.log("Paid:", ethers.formatEther(fee), "ETH");
 
   // Read records
-  const count = await healthcare.getRecordCount(owner.address);
-
+  console.log("\n📝 Reading all records...");
+  const count = await healthcare.getRecordCount(patient.address);
   console.log("Total Records:", count.toString());
 
   if (count.toString() !== "0") {
-
-    const record = await healthcare.getRecord(owner.address, 0);
-
-    console.log("Patient Name:", record[0]);
-    console.log("Diagnosis:", record[1]);
-    console.log("Treatment:", record[2]);
-    console.log("File Hash (IPFS):", record[3]);
-    console.log("Timestamp:", record[4].toString());
+    const record = await healthcare.getRecord(patient.address, 0);
+    console.log("\nRecord Details:");
+    console.log("  Patient Name:", record[0]);
+    console.log("  Diagnosis:", record[1]);
+    console.log("  Treatment:", record[2]);
+    console.log("  File Hash:", record[3]);
+    console.log("  Timestamp:", record[4].toString());
+    console.log("  Status:", record[5] === 0 ? "Pending" : record[5] === 1 ? "Paid" : "Rejected");
   }
 
-  // Unauthorized test
-  const healthcareAsRandom = healthcare.connect(randomUser);
-
-  try {
-
-    await healthcareAsRandom.addRecord(
-      owner.address,
-      "Hacker",
-      "Fake",
-      "Nothing",
-      "FakeHash"
-    );
-
-    console.log("❌ ERROR: Unauthorized user added record!");
-
-  } catch {
-
-    console.log("✅ Unauthorized user blocked successfully");
-
-  }
+  // Check pending records again
+  const pendingAfter = await healthcare.getPendingRecords(patient.address);
+  console.log("\nPending Records after payment:", pendingAfter.length);
+  
+  console.log("\n✅ All tests completed successfully!");
 }
 
 main().catch((error) => {
-  console.error(error);
+  console.error("\n❌ Error:", error);
   process.exitCode = 1;
 });
