@@ -8,7 +8,7 @@ async function main() {
   console.log("Connected Network:", network.name, network.chainId);
 
   if (network.chainId !== 1337n && network.chainId !== 31337n) {
-    console.log("❌ Please run this script on Ganache / Localhost only");
+    console.log(" Please run this script on Ganache / Localhost only");
     process.exit(1);
   }
 
@@ -34,19 +34,19 @@ async function main() {
 
   if (!isDoctorBefore) {
     // Authorize doctor
-    console.log("\n📝 Authorizing doctor...");
+    console.log("\n Authorizing doctor...");
     const tx1 = await healthcare.authorizeDoctor(doctor.address);
     await tx1.wait();
-    console.log("✅ Doctor authorized successfully!");
+    console.log(" Doctor authorized successfully!");
     
     const isDoctorAfter = await healthcare.authorizedDoctors(doctor.address);
     console.log("Doctor authorized after:", isDoctorAfter);
   } else {
-    console.log("✅ Doctor is already authorized!");
+    console.log(" Doctor is already authorized!");
   }
 
   // Step 1: Doctor creates pending record (with fee)
-  console.log("\n📝 Creating pending record...");
+  console.log("\n Creating pending record...");
   const healthcareAsDoctor = healthcare.connect(doctor);
   const fee = ethers.parseEther("0.05"); // 0.05 ETH consultation fee
   const fileHash = "QmExampleIPFSHash123456";
@@ -66,11 +66,11 @@ async function main() {
     fee
   );
   await tx2.wait();
-  console.log("✅ Pending record created by doctor");
+  console.log(" Pending record created by doctor");
   console.log("  Transaction Hash:", tx2.hash);
 
   // Check pending records for patient
-  console.log("\n📝 Checking pending records...");
+  console.log("\n Checking pending records...");
   const pending = await healthcare.getPendingRecords(patient.address);
   console.log("Pending Records Count:", pending.length);
   
@@ -85,7 +85,7 @@ async function main() {
   }
 
   // Step 2: Patient approves and pays
-  console.log("\n💰 Patient approving and paying...");
+  console.log("\n Patient approving and paying...");
   const healthcareAsPatient = healthcare.connect(patient);
   const recordId = 0;
   
@@ -95,7 +95,7 @@ async function main() {
   
   const tx3 = await healthcareAsPatient.approveAndPay(recordId, { value: fee });
   await tx3.wait();
-  console.log("✅ Patient approved and paid");
+  console.log("Patient approved and paid");
   console.log("  Transaction Hash:", tx3.hash);
   
   // Check patient balance after payment
@@ -104,7 +104,7 @@ async function main() {
   console.log("Paid:", ethers.formatEther(fee), "ETH");
 
   // Read records
-  console.log("\n📝 Reading all records...");
+  console.log("\n Reading all records...");
   const count = await healthcare.getRecordCount(patient.address);
   console.log("Total Records:", count.toString());
 
@@ -123,7 +123,7 @@ async function main() {
   const pendingAfter = await healthcare.getPendingRecords(patient.address);
   console.log("\nPending Records after payment:", pendingAfter.length);
   
-  console.log("\n✅ All tests completed successfully!");
+  console.log("\n All tests completed successfully!");
 }
 
 main().catch((error) => {
