@@ -1,7 +1,7 @@
 const { ethers } = require("hardhat");
 
 async function main() {
-  const contractAddress = "0xeD56Bf1D4a1055c114564Ca06Ea46Fea260B4d7A";
+  const contractAddress = "0x33d73aDf55625Ac3D8e0921B39a79F55d8F8a789";
 
   const network = await ethers.provider.getNetwork();
 

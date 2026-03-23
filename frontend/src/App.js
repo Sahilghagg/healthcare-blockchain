@@ -57,36 +57,49 @@ function App() {
   const PINATA_SECRET_KEY = "a1ca198a887b9c6e7f098eca461499b0d6cdb04bdd74d731ef876fa96c80ce29";
 
   // Get patient pending records - wrapped in useCallback
-  const getPatientPendingRecords = useCallback(async () => {
-    if (!account || role !== "Patient") return;
+  // Get patient pending records - UPDATED VERSION
+// Get patient pending records - FIXED VERSION
+const getPatientPendingRecords = useCallback(async () => {
+  if (!account || role !== "Patient") return;
+  
+  try {
+    const provider = new ethers.BrowserProvider(window.ethereum);
+    const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, provider);
     
-    try {
-      const provider = new ethers.BrowserProvider(window.ethereum);
-      const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, provider);
-      
-      const pending = await contract.getPendingRecords(account);
-      
-      const formattedPending = pending.map((record, index) => ({
-        id: index,
-        doctor: record[1],
-        name: record[2],
-        diagnosis: record[3],
-        treatment: record[4],
-        fileHash: record[5],
-        fee: record[6],
-        timestamp: record[7],
-        status: record[8]
-      }));
-      
-      setPendingRecords(formattedPending);
-      if (formattedPending.length > 0) {
-        addLog(`Found ${formattedPending.length} pending records for approval`, "info");
-      }
-      
-    } catch (error) {
-      console.error("Error fetching pending records:", error);
+    const pending = await contract.getPendingRecords(account);
+    
+    const formattedPending = pending.map((record, index) => ({
+      id: index,
+      doctor: record[1],
+      name: record[2],
+      diagnosis: record[3],
+      treatment: record[4],
+      fileHash: record[5],
+      fee: record[6],
+      timestamp: record[7],
+      status: record[8]
+    }));
+    
+    // Update state with new pending records
+    setPendingRecords(formattedPending);
+    
+    // CRITICAL: If no pending records, close the section
+    if (formattedPending.length === 0) {
+      setShowPendingSection(false);
+      addLog("All pending records have been processed", "success");
+    } else {
+      // If there are still pending records, keep section open
+      setShowPendingSection(true);
+      addLog(`Found ${formattedPending.length} pending records for approval`, "info");
     }
-  }, [account, role]);
+    
+    return formattedPending; // Return for immediate use
+    
+  } catch (error) {
+    console.error("Error fetching pending records:", error);
+    return [];
+  }
+}, [account, role]);
 
   // Listen for MetaMask account changes
   useEffect(() => {
@@ -121,11 +134,20 @@ function App() {
   }, [user]);
 
   // Fetch pending records when role changes to Patient
-  useEffect(() => {
+  // Fetch pending records when role changes to Patient - UPDATED
+useEffect(() => {
+  const fetchPending = async () => {
     if (role === "Patient" && account) {
-      getPatientPendingRecords();
+      const pending = await getPatientPendingRecords();
+      if (pending.length > 0) {
+        setShowPendingSection(true);
+      } else {
+        setShowPendingSection(false);
+      }
     }
-  }, [role, account, getPatientPendingRecords]);
+  };
+  fetchPending();
+}, [role, account, getPatientPendingRecords]);
 
   // Add log function
   const addLog = (message, type = "info") => {
@@ -394,6 +416,7 @@ function App() {
     setShowAccountSelector(false);
     setAvailableAccounts([]);
     setSelectedAccount("");
+    setShowPendingSection(false);
     setSuccessMessage("Logged out successfully");
     setTimeout(() => setSuccessMessage(""), 3000);
   };
@@ -635,87 +658,107 @@ function App() {
   };
 
   // Approve and Pay (Patient)
-  const approveAndPay = async (recordId, fee, doctorAddress) => {
-    try {
-      setLoading(true);
-      setError("");
+  // Approve and Pay (Patient) - UPDATED VERSION
+// Approve and Pay (Patient) - FIXED VERSION
+const approveAndPay = async (recordId, fee, doctorAddress) => {
+  try {
+    setLoading(true);
+    setError("");
 
-      const provider = new ethers.BrowserProvider(window.ethereum);
-      const signer = await provider.getSigner();
-      const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
+    const provider = new ethers.BrowserProvider(window.ethereum);
+    const signer = await provider.getSigner();
+    const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
 
-      const feeInWei = ethers.parseEther(fee);
-      
-      // Check patient balance
-      const balance = await provider.getBalance(await signer.getAddress());
-      if (balance < feeInWei) {
-        setError(`Insufficient funds. Need ${fee} ETH but have ${ethers.formatEther(balance)} ETH`);
-        setLoading(false);
-        return;
-      }
-      
-      addLog(`Approving payment of ${fee} ETH to doctor ${formatAddress(doctorAddress)}`, "pending");
-      setSuccessMessage("Transaction submitted! Please confirm in MetaMask...");
-      
-      const tx = await contract.approveAndPay(recordId, { value: feeInWei });
-      await tx.wait();
-      
-      addLog(`Payment approved! Record ID: ${recordId}`, "payment");
-      addLog(`  ├─ Patient debited: ${fee} ETH`, "debit");
-      addLog(`  └─ Doctor credited: ${fee} ETH`, "credit");
-      
-      setSuccessMessage(`Payment of ${fee} ETH successful!`);
-      setTimeout(() => setSuccessMessage(""), 5000);
-      
-      await getPatientPendingRecords();
-
-    } catch (error) {
-      console.error("Payment error:", error);
-      if (error.code === 'ACTION_REJECTED') {
-        setError("Transaction rejected in MetaMask");
-      } else if (error.message.includes("insufficient funds")) {
-        setError("Insufficient funds for payment");
-      } else {
-        setError(error.message || "Payment failed");
-      }
-    } finally {
+    const feeInWei = ethers.parseEther(fee);
+    
+    // Check patient balance
+    const balance = await provider.getBalance(await signer.getAddress());
+    if (balance < feeInWei) {
+      setError(`Insufficient funds. Need ${fee} ETH but have ${ethers.formatEther(balance)} ETH`);
       setLoading(false);
+      return;
     }
-  };
+    
+    addLog(`Approving payment of ${fee} ETH to doctor ${formatAddress(doctorAddress)}`, "pending");
+    setSuccessMessage("Transaction submitted! Please confirm in MetaMask...");
+    
+    const tx = await contract.approveAndPay(recordId, { value: feeInWei });
+    await tx.wait();
+    
+    addLog(`Payment approved! Record ID: ${recordId}`, "payment");
+    addLog(`  ├─ Patient debited: ${fee} ETH`, "debit");
+    addLog(`  └─ Doctor credited: ${fee} ETH`, "credit");
+    
+    setSuccessMessage(`Payment of ${fee} ETH successful! Record has been finalized.`);
+    
+    // CRITICAL: Refresh and get the updated pending records
+    const updatedPending = await getPatientPendingRecords();
+    
+    // CRITICAL: Immediately check if there are any pending records left
+    if (updatedPending.length === 0) {
+      setShowPendingSection(false);
+      addLog("No more pending approvals", "success");
+    }
+    
+    setTimeout(() => setSuccessMessage(""), 5000);
+
+  } catch (error) {
+    console.error("Payment error:", error);
+    if (error.code === 'ACTION_REJECTED') {
+      setError("Transaction rejected in MetaMask");
+    } else if (error.message.includes("insufficient funds")) {
+      setError("Insufficient funds for payment");
+    } else {
+      setError(error.message || "Payment failed");
+    }
+  } finally {
+    setLoading(false);
+  }
+};
 
   // Reject Record (Patient)
-  const rejectRecord = async (recordId) => {
-    try {
-      setLoading(true);
-      setError("");
+  // Reject Record (Patient) - UPDATED VERSION
+// Reject Record (Patient) - FIXED VERSION
+const rejectRecord = async (recordId) => {
+  try {
+    setLoading(true);
+    setError("");
 
-      const provider = new ethers.BrowserProvider(window.ethereum);
-      const signer = await provider.getSigner();
-      const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
+    const provider = new ethers.BrowserProvider(window.ethereum);
+    const signer = await provider.getSigner();
+    const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
 
-      addLog(`Rejecting record ${recordId}`, "pending");
-      setSuccessMessage("Transaction submitted! Please confirm in MetaMask...");
-      
-      const tx = await contract.rejectRecord(recordId);
-      await tx.wait();
-      
-      addLog(`Record ${recordId} rejected`, "info");
-      setSuccessMessage("Record rejected successfully!");
-      setTimeout(() => setSuccessMessage(""), 3000);
-      
-      await getPatientPendingRecords();
-
-    } catch (error) {
-      console.error("Rejection error:", error);
-      if (error.code === 'ACTION_REJECTED') {
-        setError("Transaction rejected in MetaMask");
-      } else {
-        setError(error.message || "Rejection failed");
-      }
-    } finally {
-      setLoading(false);
+    addLog(`Rejecting record ${recordId}`, "pending");
+    setSuccessMessage("Transaction submitted! Please confirm in MetaMask...");
+    
+    const tx = await contract.rejectRecord(recordId);
+    await tx.wait();
+    
+    addLog(`Record ${recordId} rejected`, "info");
+    setSuccessMessage("Record rejected successfully!");
+    
+    // CRITICAL: Refresh and get the updated pending records
+    const updatedPending = await getPatientPendingRecords();
+    
+    // CRITICAL: Immediately check if there are any pending records left
+    if (updatedPending.length === 0) {
+      setShowPendingSection(false);
+      addLog("No more pending approvals", "success");
     }
-  };
+    
+    setTimeout(() => setSuccessMessage(""), 3000);
+
+  } catch (error) {
+    console.error("Rejection error:", error);
+    if (error.code === 'ACTION_REJECTED') {
+      setError("Transaction rejected in MetaMask");
+    } else {
+      setError(error.message || "Rejection failed");
+    }
+  } finally {
+    setLoading(false);
+  }
+};
 
   // Get record count
   const getRecordCount = async () => {
